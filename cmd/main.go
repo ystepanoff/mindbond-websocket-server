@@ -1,7 +1,7 @@
 package main
 
-import "fmt"
+import "flotta-home/mindbond/websocket-server/pkg/config"
 
 func main() {
-	fmt.Println("Hello, World!")
+	config, err := config.LoadConfig()
 }
