@@ -27,7 +27,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		message := string(msg)
-		fmt.Println("Received:", message)
 		responseMessage := fmt.Sprintf("You sent me %s!", message)
 		if err := gowest.WriteString(bufrw, []byte(responseMessage)); err != nil {
 			fmt.Println(err)

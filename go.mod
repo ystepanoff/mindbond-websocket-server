@@ -1,4 +1,4 @@
-module flotta-home/mindbond/websocket-service
+module flotta-home/mindbond/websocket-server
 
 go 1.21.5
 

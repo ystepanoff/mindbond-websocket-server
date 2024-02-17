@@ -3,7 +3,7 @@ package config
 import "github.com/spf13/viper"
 
 type Config struct {
-	Port string `mapstructure:"PORT"`
+	Port int `mapstructure:"PORT"`
 }
 
 func LoadConfig() (config Config, err error) {
