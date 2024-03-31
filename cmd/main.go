@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flotta-home/mindbond/websocket-server/pkg/client"
 	"flotta-home/mindbond/websocket-server/pkg/config"
 	"flotta-home/mindbond/websocket-server/pkg/server"
 	"log"
@@ -11,5 +12,12 @@ func main() {
 	if err != nil {
 		log.Fatalln("Failed at config", err)
 	}
-	server.Start(config.Port)
+
+	authClient := client.InitAuthServiceClient(config.AuthServiceUrl)
+	wsServer := server.Server{
+		Port:       config.Port,
+		AuthClient: authClient,
+	}
+
+	wsServer.Start()
 }

@@ -1,20 +1,26 @@
 package server
 
 import (
+	"flotta-home/mindbond/websocket-server/pkg/client"
 	"fmt"
 	"github.com/ystepanoff/gowest"
 	"net"
 	"net/http"
 )
 
-func Start(port int) {
-	http.HandleFunc("/", wsHandler)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
+type Server struct {
+	Port       int
+	AuthClient client.AuthServiceClient
+}
+
+func (s *Server) Start() {
+	http.HandleFunc("/", s.wsHandler)
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", s.Port), nil); err != nil {
 		panic(err)
 	}
 }
 
-func wsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 	conn, bufrw, err := gowest.GetConnection(w, r)
 	fmt.Println("New Connection", conn.RemoteAddr().String())
 	if err != nil {
@@ -33,6 +39,8 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		message := string(msg)
 		fmt.Println(message)
+		validationResponse, err := s.AuthClient.Validate(message)
+		fmt.Println(validationResponse, err)
 		responseMessage := fmt.Sprintf("You sent me %s!", message)
 		if err := gowest.WriteString(bufrw, []byte(responseMessage)); err != nil {
 			fmt.Println(err)
