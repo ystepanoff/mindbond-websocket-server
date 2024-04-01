@@ -5,6 +5,7 @@ import "github.com/spf13/viper"
 type Config struct {
 	Port           int    `mapstructure:"PORT"`
 	AuthServiceUrl string `mapstructure:"AUTH_SERVICE_URL"`
+	ChatServiceUrl string `mapstructure:"CHAT_SERVICE_URL"`
 }
 
 func LoadConfig() (config Config, err error) {

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"flotta-home/mindbond/websocket-server/pkg/client"
 	"fmt"
 	"github.com/ystepanoff/gowest"
@@ -11,6 +12,20 @@ import (
 type Server struct {
 	Port       int
 	AuthClient client.AuthServiceClient
+	ChatClient client.ChatServiceClient
+	Pool       map[int]chan interface{}
+}
+
+type inputMessage struct {
+	UserId  int             `json:"userId"`
+	Token   string          `json:"token"`
+	Request string          `json:"request"`
+	Data    json.RawMessage `json:"data"`
+}
+
+type sendRequest struct {
+	ContactId int    `json:"contactId"`
+	Message   string `json:"message"`
 }
 
 func (s *Server) Start() {
@@ -38,9 +53,22 @@ func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		message := string(msg)
-		fmt.Println(message)
-		validationResponse, err := s.AuthClient.Validate(message)
-		fmt.Println(validationResponse, err)
+		data := inputMessage{}
+		if err = json.Unmarshal(msg, &data); err != nil {
+			fmt.Errorf("failed to unmarshal: %v", err)
+			continue
+		}
+		validationResponse, err := s.AuthClient.Validate(data.Token)
+		if validationResponse.Status != http.StatusOK {
+			fmt.Errorf("token validation failed with status %v: %v", validationResponse.Status, validationResponse.Error)
+		}
+		switch req := data.Request; req {
+		case "init":
+			fmt.Println("Received init request")
+		case "sendMessage":
+			fmt.Println("Received send message request")
+		}
+
 		responseMessage := fmt.Sprintf("You sent me %s!", message)
 		if err := gowest.WriteString(bufrw, []byte(responseMessage)); err != nil {
 			fmt.Println(err)

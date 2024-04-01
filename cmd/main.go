@@ -14,9 +14,11 @@ func main() {
 	}
 
 	authClient := client.InitAuthServiceClient(config.AuthServiceUrl)
+	chatClient := client.InitChatServiceClient(config.ChatServiceUrl)
 	wsServer := server.Server{
-		Port:       config.Port,
-		AuthClient: authClient,
+		port:       config.Port,
+		authClient: authClient,
+		ChatClient: chatClient,
 	}
 
 	wsServer.Start()
