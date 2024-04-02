@@ -39,13 +39,45 @@ func (s *Server) Start() {
 	}
 }
 
+func (s *Server) initClient(userId int64, conn net.Conn) {
+	s.RemoteAddrs[userId] = conn.RemoteAddr().String()
+}
+
+func (s *Server) processMessage(userId int64, token string, data json.RawMessage) (*sendRequest, error) {
+	sendReq := sendRequest{}
+	if err := json.Unmarshal(data, &sendReq); err != nil {
+		return nil, err
+	}
+	addMessageResponse, err := s.ChatClient.AddMessage(userId, sendReq.ContactId, sendReq.Message, token)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(sendReq.Message, sendReq.ContactId, addMessageResponse)
+	return &sendReq, nil
+}
+
+func (s *Server) notifyClient(userId int64, response string) error {
+	remoteAddr, ok := s.RemoteAddrs[userId]
+	if !ok {
+		return fmt.Errorf("User %v not found among existing connections", userId)
+	}
+	bufrw, ok := s.RWBuffers[remoteAddr]
+	if !ok {
+		return fmt.Errorf("RW buffer does not exist for %s", remoteAddr)
+	}
+	if err := gowest.WriteString(bufrw, []byte(response)); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 	conn, bufrw, err := gowest.GetConnection(w, r)
-	fmt.Println("New Connection", conn.RemoteAddr().String())
-	s.RWBuffers[conn.RemoteAddr().String()] = bufrw
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("New Connection", conn.RemoteAddr().String())
+	s.RWBuffers[conn.RemoteAddr().String()] = bufrw
 	defer s.closeConnection(conn)
 	for {
 		msg, err := gowest.Read(bufrw)
@@ -60,7 +92,7 @@ func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 		message := string(msg)
 		data := inputMessage{}
 		if err = json.Unmarshal(msg, &data); err != nil {
-			fmt.Printf("failed to unmarshal: %v", err)
+			fmt.Printf("failed to unmarshal: %d %v", len(msg), err)
 			continue
 		}
 		validationResponse, err := s.AuthClient.Validate(data.Token)
@@ -75,15 +107,20 @@ func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 		switch req := data.Request; req {
 		case "init":
 			fmt.Println("Received init request from user", data.UserId)
-			s.RemoteAddrs[data.UserId] = conn.RemoteAddr().String()
+			s.initClient(data.UserId, conn)
 		case "sendMessage":
 			fmt.Println("Received send message request")
-			sendReq := sendRequest{}
-			if err = json.Unmarshal(data.Data, &sendReq); err != nil {
-				fmt.Printf("failed to unmarshal send request: %v", err)
+			sendReq, err := s.processMessage(data.UserId, data.Token, data.Data)
+			if err != nil {
+				fmt.Println(err)
 				continue
 			}
-			fmt.Println(sendReq.Message, sendReq.ContactId)
+			if err := s.notifyClient(data.UserId, "hello"); err != nil {
+				fmt.Println(err)
+			}
+			if err := s.notifyClient(sendReq.ContactId, "World"); err != nil {
+				fmt.Println(err)
+			}
 		}
 
 		responseMessage := fmt.Sprintf("You sent me %s!", message)
