@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"flotta-home/mindbond/websocket-server/pkg/client"
+	"flotta-home/mindbond/websocket-server/pkg/pb"
 	"fmt"
 	"github.com/ystepanoff/gowest"
 	"net"
@@ -25,9 +26,16 @@ type inputMessage struct {
 	Data    json.RawMessage `json:"data"`
 }
 
-type sendRequest struct {
+type sendMessageRequest struct {
 	ContactId int64  `json:"contactId"`
 	Message   string `json:"message"`
+}
+
+type sendMessageResponse struct {
+	UserOriginal   int64  `json:"userOriginal"`
+	UserTranslated int64  `json:"userTranslated"`
+	Original       string `json:"original"`
+	Translated     string `json:"translated"`
 }
 
 func (s *Server) Start() {
@@ -43,20 +51,20 @@ func (s *Server) initClient(userId int64, conn net.Conn) {
 	s.RemoteAddrs[userId] = conn.RemoteAddr().String()
 }
 
-func (s *Server) processMessage(userId int64, token string, data json.RawMessage) (*sendRequest, error) {
-	sendReq := sendRequest{}
-	if err := json.Unmarshal(data, &sendReq); err != nil {
-		return nil, err
+func (s *Server) processMessage(userId int64, token string, data json.RawMessage) (*sendMessageRequest, *pb.AddMessageResponse, error) {
+	sendReq := &sendMessageRequest{}
+	if err := json.Unmarshal(data, sendReq); err != nil {
+		return nil, nil, err
 	}
 	addMessageResponse, err := s.ChatClient.AddMessage(userId, sendReq.ContactId, sendReq.Message, token)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	fmt.Println(sendReq.Message, sendReq.ContactId, addMessageResponse)
-	return &sendReq, nil
+	return sendReq, addMessageResponse, nil
 }
 
-func (s *Server) notifyClient(userId int64, response string) error {
+func (s *Server) notifyClient(userId int64, response interface{}) error {
 	remoteAddr, ok := s.RemoteAddrs[userId]
 	if !ok {
 		return fmt.Errorf("User %v not found among existing connections", userId)
@@ -65,7 +73,11 @@ func (s *Server) notifyClient(userId int64, response string) error {
 	if !ok {
 		return fmt.Errorf("RW buffer does not exist for %s", remoteAddr)
 	}
-	if err := gowest.WriteString(bufrw, []byte(response)); err != nil {
+	rawResponse, err := json.Marshal(response)
+	if err != nil {
+		return fmt.Errorf("Error marshalling response: %v", err)
+	}
+	if err := gowest.WriteString(bufrw, []byte(rawResponse)); err != nil {
 		return err
 	}
 	return nil
@@ -89,7 +101,6 @@ func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Println(err)
 			continue
 		}
-		message := string(msg)
 		data := inputMessage{}
 		if err = json.Unmarshal(msg, &data); err != nil {
 			fmt.Printf("failed to unmarshal: %d %v", len(msg), err)
@@ -110,23 +121,29 @@ func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 			s.initClient(data.UserId, conn)
 		case "sendMessage":
 			fmt.Println("Received send message request")
-			sendReq, err := s.processMessage(data.UserId, data.Token, data.Data)
+			sendReq, addMessageResponse, err := s.processMessage(data.UserId, data.Token, data.Data)
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			if err := s.notifyClient(data.UserId, "hello"); err != nil {
+			response := &sendMessageResponse{
+				UserOriginal:   data.UserId,
+				UserTranslated: sendReq.ContactId,
+				Original:       sendReq.Message,
+				Translated:     addMessageResponse.Translation,
+			}
+			if err := s.notifyClient(data.UserId, response); err != nil {
 				fmt.Println(err)
 			}
-			if err := s.notifyClient(sendReq.ContactId, "World"); err != nil {
+			if err := s.notifyClient(sendReq.ContactId, response); err != nil {
 				fmt.Println(err)
 			}
 		}
 
-		responseMessage := fmt.Sprintf("You sent me %s!", message)
-		if err := gowest.WriteString(bufrw, []byte(responseMessage)); err != nil {
-			fmt.Println(err)
-		}
+		//responseMessage := fmt.Sprintf("You sent me %s!", message)
+		//if err := gowest.WriteString(bufrw, []byte(responseMessage)); err != nil {
+		//	fmt.Println(err)
+		//}
 	}
 }
 
